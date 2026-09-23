@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Every token chart is a DexScreener embed. Opening the socket to them
+         before React has even mounted takes the DNS + TCP + TLS handshake off
+         the critical path of the first chart a player looks at. -->
+    <link rel="preconnect" href="https://dexscreener.com" />
+    <link rel="preconnect" href="https://dd.dexscreener.com" crossorigin />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230b0e15'/%3E%3Ctext x='50' y='72' font-size='62' text-anchor='middle'%3E%E2%9A%94%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+    <title>SolArena - Pick your coins. Beat your opponent. Take the pool.</title>
+    <!-- The server rewrites everything between these markers per route: the
+         right title, description, canonical and social card for the page that
+         was actually asked for. What sits here is the fallback for anything
+         that serves this file raw (the vite dev server, a static host). -->
+    <!--seo:start-->
+    <meta name="description" content="1v1 crypto battles: pick three coins, stake against an opponent, highest return takes the pool." />
+    <meta property="og:site_name" content="SolArena" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="SolArena - Pick your coins. Beat your opponent. Take the pool." />
+    <meta property="og:description" content="1v1 crypto battles: pick three coins, stake against an opponent, highest return takes the pool." />
+    <meta property="og:image" content="/og.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!--seo:end-->
+
+    <!-- ===================== boot screen =====================
+         Everything below is INLINE on purpose. styles.css and the fonts ride
+         the JS bundle, so anything that referenced them would paint nothing
+         until the bundle had already arrived - which is exactly the gap this
+         is here to cover. Until now that gap was a white flash and then an
+         empty page.
+
+         It lives OUTSIDE #root rather than inside it: one copy of the markup,
+         one copy of the CSS, and no hand-off flash between a pre-React splash
+         and a React one. App.jsx fades it out once auth is ready.
+
+         Type is system-ui deliberately. Anton and Inter arrive with the
+         bundle, so a branded face here would swap fonts mid-fade. -->
+    <style>
+      /* BODY ONLY - never html. The ambient sky is a `body::before` at
+         z-index:-1, and that is visible only while html has NO background of
+         its own: with html bare, body's background propagates to the canvas
+         and body itself stays transparent, so the pseudo-element shows
+         through. Painting html here gave the canvas html's colour and left
+         body's own background sitting on top of the sky, which wiped it out. */
+      body { margin: 0; background: #0d0c0f; }
+      :root { --boot-accent: #9945ff; }
+      #boot {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+        background: #0d0c0f;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        transition: opacity 0.4s ease;
+      }
+      /* A ring closing around a fight: two arcs, opposite directions, one of
+         them the arena's accent. No glyph, so nothing to re-render when the
+         real typeface lands. */
+      #boot .bm { position: relative; width: 64px; height: 64px; }
+      #boot .bm i {
+        position: absolute; border-radius: 50%;
+        border: 2px solid transparent; border-top-color: var(--boot-accent);
+      }
+      #boot .bm i:first-child { inset: 0; animation: boot-spin 1.15s linear infinite; }
+      #boot .bm i:last-child {
+        inset: 11px; border-top-color: #867e8c;
+        animation: boot-spin 1.7s linear infinite reverse;
+      }
+      @keyframes boot-spin { to { transform: rotate(360deg); } }
+      #boot .bw {
+        font-size: 12.5px; font-weight: 700; letter-spacing: 0.4em;
+        color: #e9e6ef; text-indent: 0.4em;
+      }
+      #boot .bw b { color: var(--boot-accent); font-weight: 700; }
+      /* Indeterminate on purpose: a percentage here would be invented, and a
+         bar that lies about progress is worse than one that just breathes. */
+      #boot .br { position: relative; width: 132px; height: 2px; overflow: hidden; background: #1f1c23; border-radius: 2px; }
+      #boot .br i {
+        position: absolute; inset: 0 auto 0 0; width: 42%;
+        background: var(--boot-accent); border-radius: 2px;
+        animation: boot-slide 1.25s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+      }
+      @keyframes boot-slide { 0% { left: -42%; } 100% { left: 100%; } }
+      /* If the server never answers, say so rather than spinning forever.
+         Pure CSS: the delay IS the timeout, so no script has to run for it. */
+      #boot .bs {
+        position: absolute; bottom: 42px; font-size: 11.5px; color: #867e8c;
+        opacity: 0; animation: boot-late 0.4s 9s ease forwards;
+      }
+      @keyframes boot-late { to { opacity: 1; } }
+      #boot.done { opacity: 0; pointer-events: none; }
+      @media (prefers-reduced-motion: reduce) {
+        #boot .bm i, #boot .br i { animation: none; }
+        #boot .br i { left: 0; width: 100%; opacity: 0.4; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="boot">
+      <div class="bm"><i></i><i></i></div>
+      <div class="bw" id="bw">SOL<b>ARENA</b></div>
+      <div class="br"><i></i></div>
+      <div class="bs">Still connecting to the arena…</div>
+    </div>
+    <div id="root"></div>
+    <!-- Links shared in the hash era (#/challenge/CODE) are rewritten into
+         real paths before ANYTHING reads the URL - replaceState, so the hash
+         form never enters history. Predict was retired on 23 Sep 2026: the
+         server redirects its real paths, and an old #/predict link lands on
+         the arena here. -->
+    <script>
+      if (location.hash.indexOf('#/') === 0) {
+        history.replaceState(null, '', location.hash.slice(1))
+      }
+      if (location.pathname.indexOf('/predict') === 0) {
+        history.replaceState(null, '', '/play')
+      }
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
